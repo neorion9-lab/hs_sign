@@ -5,6 +5,7 @@ export default function Sign() {
   const [users, setUsers] = useState([]);
   const [selectedUser, setSelectedUser] = useState('');
   const [eventName, setEventName] = useState('');
+  const [selectedEvents, setSelectedEvents] = useState([]);
   const [submitted, setSubmitted] = useState(false);
   const sigCanvas = useRef({});
 
@@ -20,30 +21,58 @@ export default function Sign() {
   };
 
   const handleSubmit = () => {
-    if (!selectedUser) {
-      alert('이름을 선택해주세요!');
-      return;
-    }
-    if (sigCanvas.current.isEmpty()) {
-      alert('서명을 해주세요!');
-      return;
-    }
-
-    const signData = sigCanvas.current.getTrimmedCanvas().toDataURL('image/png');
-    
-    const updatedUsers = users.map(u => {
-      if (u.id.toString() === selectedUser) {
-        return { ...u, signed: true, signData };
+    try {
+      if (selectedEvents.length === 0) {
+        alert('참여한 연수를 한 개 이상 선택해주세요!');
+        return;
       }
-      return u;
-    });
+      if (!selectedUser) {
+        alert('이름을 선택해주세요!');
+        return;
+      }
+      if (sigCanvas.current.isEmpty()) {
+        alert('서명을 해주세요!');
+        return;
+      }
 
-    setUsers(updatedUsers);
-    localStorage.setItem('ssgssak_users', JSON.stringify(updatedUsers));
-    setSubmitted(true);
+      // getTrimmedCanvas() 내부의 모듈(trim-canvas)이 Vite와 충돌해서 발생하는 오류를 피하기 위해 getCanvas() 사용
+      const signData = sigCanvas.current.getCanvas().toDataURL('image/png');
+      
+      const updatedUsers = users.map(u => {
+        if (u.id.toString() === selectedUser) {
+          const newSignedEvents = { ...(u.signedEvents || {}) };
+          selectedEvents.forEach(ev => {
+            newSignedEvents[ev] = signData;
+          });
+          return { ...u, signedEvents: newSignedEvents };
+        }
+        return u;
+      });
+
+      setUsers(updatedUsers);
+      localStorage.setItem('ssgssak_users', JSON.stringify(updatedUsers));
+      setSubmitted(true);
+      alert('제출되었습니다.');
+    } catch (error) {
+      alert('제출 중 오류가 발생했습니다: ' + error.message);
+      console.error(error);
+    }
   };
 
   const currentUser = users.find(u => u.id.toString() === selectedUser);
+  const eventsList = eventName ? eventName.split(/,|\n/).map(s => s.trim()).filter(Boolean) : [];
+  
+  // 현재 유저가 서명하지 않은 연수 목록
+  const pendingEvents = currentUser ? eventsList.filter(ev => !(currentUser.signedEvents && currentUser.signedEvents[ev])) : [];
+  const isAllSigned = currentUser && eventsList.length > 0 && pendingEvents.length === 0;
+
+  const handleEventCheck = (ev) => {
+    if (selectedEvents.includes(ev)) {
+      setSelectedEvents(selectedEvents.filter(e => e !== ev));
+    } else {
+      setSelectedEvents([...selectedEvents, ev]);
+    }
+  };
 
   if (submitted) {
     return (
@@ -54,6 +83,7 @@ export default function Sign() {
         <button className="glass-button mt-4" onClick={() => {
           setSubmitted(false);
           setSelectedUser('');
+          setSelectedEvents([]);
         }}>다른 사람 서명하기</button>
       </div>
     );
@@ -70,27 +100,51 @@ export default function Sign() {
           value={selectedUser} 
           onChange={(e) => {
             setSelectedUser(e.target.value);
+            setSelectedEvents([]);
             if(sigCanvas.current && sigCanvas.current.clear) sigCanvas.current.clear();
           }}
         >
           <option value="">이름을 선택하세요</option>
-          {users.map(user => (
-            <option key={user.id} value={user.id}>
-              {user.name} {user.signed ? '(서명완료)' : ''}
-            </option>
-          ))}
+          {users.map(user => {
+            const userPending = eventsList.filter(ev => !(user.signedEvents && user.signedEvents[ev]));
+            const isUserAllSigned = eventsList.length > 0 && userPending.length === 0;
+            return (
+              <option key={user.id} value={user.id}>
+                {user.name} {isUserAllSigned ? '(전체 서명완료)' : ''}
+              </option>
+            );
+          })}
         </select>
       </div>
 
-      {currentUser && currentUser.signed ? (
+      {isAllSigned ? (
         <div className="mt-4" style={{textAlign: 'center', padding: '20px', background: 'rgba(255,255,255,0.2)', borderRadius: '12px'}}>
-          <p>✅ 이미 서명이 완료된 선생님입니다.</p>
+          <p>✅ 모든 연수에 서명이 완료된 선생님입니다.</p>
         </div>
       ) : (
         <>
+          {currentUser && eventsList.length > 0 && (
+            <div className="flex-col mt-4">
+              <label style={{fontWeight: 600}}>2. 서명할 연수 선택</label>
+              <div style={{display: 'flex', flexDirection: 'column', gap: '8px', marginTop: '8px'}}>
+                {pendingEvents.map(ev => (
+                  <label key={ev} style={{display: 'flex', alignItems: 'center', gap: '8px', cursor: 'pointer'}}>
+                    <input 
+                      type="checkbox" 
+                      checked={selectedEvents.includes(ev)} 
+                      onChange={() => handleEventCheck(ev)}
+                      style={{width: '20px', height: '20px'}}
+                    />
+                    {ev}
+                  </label>
+                ))}
+              </div>
+            </div>
+          )}
+
           <div className="flex-col mt-4">
             <label style={{fontWeight: 600, display: 'flex', justifyContent: 'space-between'}}>
-              <span>2. 서명 패드 (아래 빈칸에 서명하세요)</span>
+              <span>3. 서명 패드 (아래 빈칸에 서명하세요)</span>
               <button 
                 onClick={handleClear} 
                 style={{background: 'none', border: 'none', color: '#ff758c', cursor: 'pointer', textDecoration: 'underline'}}

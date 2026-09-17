@@ -35,8 +35,7 @@ export default function Admin() {
       const newUsers = names.map((name, index) => ({
         id: index + 1,
         name: name.trim(),
-        signed: false,
-        signData: null
+        signedEvents: {}
       }));
 
       setUsers(newUsers);
@@ -59,14 +58,18 @@ export default function Admin() {
   };
 
   const exportResults = () => {
-    const data = users.map(u => ({
-      '이름': u.name,
-      '서명상태': u.signed ? '완료' : '미완료'
-    }));
+    const eventsList = eventName.split(/,|\n/).map(s => s.trim()).filter(Boolean);
+    const data = users.map(u => {
+      const row = { '이름': u.name };
+      eventsList.forEach(ev => {
+        row[ev] = u.signedEvents && u.signedEvents[ev] ? '완료' : '미완료';
+      });
+      return row;
+    });
     const ws = XLSX.utils.json_to_sheet(data);
     const wb = XLSX.utils.book_new();
     XLSX.utils.book_append_sheet(wb, ws, "서명결과");
-    XLSX.writeFile(wb, `${eventName || '연수'}_서명결과.xlsx`);
+    XLSX.writeFile(wb, `서명결과.xlsx`);
   };
 
   const clearData = () => {
@@ -78,7 +81,7 @@ export default function Admin() {
     }
   };
 
-  const signedCount = users.filter(u => u.signed).length;
+  const eventsList = eventName.split(/,|\n/).map(s => s.trim()).filter(Boolean);
 
   const handleLogin = (e) => {
     e.preventDefault();
@@ -138,14 +141,21 @@ export default function Admin() {
       </div>
 
       <div className="flex-col mt-4">
-        <h2>3. 실시간 서명 현황 ({signedCount} / {users.length})</h2>
+        <h2>3. 실시간 서명 현황 ({users.length}명)</h2>
         <div className="user-list">
           {users.map(user => (
-            <div key={user.id} className="user-item">
-              <span>{user.name} 선생님</span>
-              <span className={`status-badge ${user.signed ? 'status-done' : 'status-pending'}`}>
-                {user.signed ? '서명 완료' : '미완료'}
-              </span>
+            <div key={user.id} className="user-item" style={{flexDirection: 'column', alignItems: 'flex-start', gap: '8px'}}>
+              <span style={{fontWeight: 'bold'}}>{user.name} 선생님</span>
+              <div style={{display: 'flex', gap: '5px', flexWrap: 'wrap'}}>
+                {eventsList.map(ev => {
+                  const isSigned = user.signedEvents && user.signedEvents[ev];
+                  return (
+                    <span key={ev} className={`status-badge ${isSigned ? 'status-done' : 'status-pending'}`} style={{fontSize: '11px', padding: '4px 8px'}}>
+                      {ev}: {isSigned ? '완료' : '미완료'}
+                    </span>
+                  );
+                })}
+              </div>
             </div>
           ))}
           {users.length === 0 && <p style={{textAlign: 'center', padding: '20px'}}>아직 업로드된 명단이 없습니다.</p>}
