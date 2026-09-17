@@ -34,6 +34,9 @@ function App() {
           <Route path="/admin" element={<Admin />} />
         </Routes>
       </div>
+      <footer className="footer-copyright">
+        저작권: &copy; 2026 Hyunsil_ORION. All rights reserved.
+      </footer>
     </Router>
   );
 }
