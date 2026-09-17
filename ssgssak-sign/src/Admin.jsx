@@ -85,7 +85,7 @@ export default function Admin() {
 
   const handleLogin = (e) => {
     e.preventDefault();
-    if (passwordInput === 'gaewon2026') {
+    if (passwordInput === 'happy2026') {
       setIsAuthenticated(true);
     } else {
       alert('비밀번호가 틀렸습니다!');
