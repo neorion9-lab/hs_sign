@@ -1,5 +1,7 @@
 import { useState, useEffect } from 'react';
 import * as XLSX from 'xlsx';
+import ExcelJS from 'exceljs';
+import { saveAs } from 'file-saver';
 import { db } from './firebase';
 import { collection, doc, setDoc, onSnapshot, getDocs, writeBatch } from 'firebase/firestore';
 
@@ -98,19 +100,59 @@ export default function Admin() {
     }
   };
 
-  const exportResults = () => {
-    const eventsList = eventName.split(/,|\n/).map(s => s.trim()).filter(Boolean);
-    const data = users.map(u => {
-      const row = { '이름': u.name };
+  const exportResults = async () => {
+    try {
+      const eventsList = eventName.split(/,|\n/).map(s => s.trim()).filter(Boolean);
+      const workbook = new ExcelJS.Workbook();
+      const worksheet = workbook.addWorksheet('서명결과');
+
+      // 서명 이미지가 잘 보이도록 기본 행 높이 설정
+      worksheet.properties.defaultRowHeight = 60;
+
+      // 헤더 설정
+      const columns = [{ header: '이름', key: 'name', width: 20 }];
       eventsList.forEach(ev => {
-        row[ev] = u.signedEvents && u.signedEvents[ev] ? '완료' : '미완료';
+        columns.push({ header: ev, key: ev, width: 25 });
       });
-      return row;
-    });
-    const ws = XLSX.utils.json_to_sheet(data);
-    const wb = XLSX.utils.book_new();
-    XLSX.utils.book_append_sheet(wb, ws, "서명결과");
-    XLSX.writeFile(wb, `서명결과.xlsx`);
+      worksheet.columns = columns;
+
+      worksheet.getRow(1).font = { bold: true };
+      worksheet.getRow(1).alignment = { vertical: 'middle', horizontal: 'center' };
+
+      // 각 선생님 데이터 및 이미지 삽입
+      users.forEach((u, rowIndex) => {
+        const row = worksheet.addRow({ name: u.name });
+        row.alignment = { vertical: 'middle', horizontal: 'center' };
+
+        eventsList.forEach((ev, colIndex) => {
+          if (u.signedEvents && u.signedEvents[ev]) {
+            // Base64 이미지를 엑셀 워크북에 추가
+            const imageId = workbook.addImage({
+              base64: u.signedEvents[ev],
+              extension: 'png',
+            });
+            
+            // 이미지를 특정 셀 위치에 넣기 (tl: Top-Left 좌표)
+            // col 0 = 이름, col 1 = 첫번째 이벤트 (0-indexed)
+            // row 0 = 헤더, row 1 = 첫번째 선생님 (0-indexed)
+            worksheet.addImage(imageId, {
+              tl: { col: colIndex + 1, row: rowIndex + 1 },
+              ext: { width: 140, height: 60 } // 셀 크기에 맞게 이미지 크기 조정
+            });
+          } else {
+            // 서명이 없는 경우 텍스트 삽입 (getCell은 1-indexed)
+            row.getCell(colIndex + 2).value = '미완료'; 
+          }
+        });
+      });
+
+      // 파일 다운로드
+      const buffer = await workbook.xlsx.writeBuffer();
+      saveAs(new Blob([buffer]), '서명결과.xlsx');
+    } catch (error) {
+      console.error(error);
+      alert('엑셀 파일 생성 중 오류가 발생했습니다.');
+    }
   };
 
   const clearData = async () => {
