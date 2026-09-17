@@ -1,5 +1,7 @@
 import { useState, useEffect, useRef } from 'react';
 import SignatureCanvas from 'react-signature-canvas';
+import { db } from './firebase';
+import { collection, doc, updateDoc, onSnapshot } from 'firebase/firestore';
 
 export default function Sign() {
   const [users, setUsers] = useState([]);
@@ -10,17 +12,36 @@ export default function Sign() {
   const sigCanvas = useRef({});
 
   useEffect(() => {
-    const savedEvent = localStorage.getItem('ssgssak_event');
-    const savedUsers = localStorage.getItem('ssgssak_users');
-    if (savedEvent) setEventName(savedEvent);
-    if (savedUsers) setUsers(JSON.parse(savedUsers));
+    // Listen to config
+    const unsubConfig = onSnapshot(doc(db, "config", "appSettings"), (docSnap) => {
+      if (docSnap.exists()) {
+        setEventName(docSnap.data().eventName || '');
+      }
+    });
+
+    // Listen to users
+    const unsubUsers = onSnapshot(collection(db, "users"), (snapshot) => {
+      const usersData = [];
+      snapshot.forEach((doc) => {
+        usersData.push(doc.data());
+      });
+      usersData.sort((a, b) => a.id - b.id);
+      setUsers(usersData);
+    });
+
+    return () => {
+      unsubConfig();
+      unsubUsers();
+    };
   }, []);
 
   const handleClear = () => {
     sigCanvas.current.clear();
   };
 
-  const handleSubmit = () => {
+  const currentUser = users.find(u => u.id.toString() === selectedUser);
+
+  const handleSubmit = async () => {
     try {
       if (selectedEvents.length === 0) {
         alert('참여한 연수를 한 개 이상 선택해주세요!');
@@ -38,19 +59,14 @@ export default function Sign() {
       // getTrimmedCanvas() 내부의 모듈(trim-canvas)이 Vite와 충돌해서 발생하는 오류를 피하기 위해 getCanvas() 사용
       const signData = sigCanvas.current.getCanvas().toDataURL('image/png');
       
-      const updatedUsers = users.map(u => {
-        if (u.id.toString() === selectedUser) {
-          const newSignedEvents = { ...(u.signedEvents || {}) };
-          selectedEvents.forEach(ev => {
-            newSignedEvents[ev] = signData;
-          });
-          return { ...u, signedEvents: newSignedEvents };
-        }
-        return u;
+      const newSignedEvents = { ...(currentUser.signedEvents || {}) };
+      selectedEvents.forEach(ev => {
+        newSignedEvents[ev] = signData;
       });
 
-      setUsers(updatedUsers);
-      localStorage.setItem('ssgssak_users', JSON.stringify(updatedUsers));
+      const userRef = doc(db, "users", selectedUser);
+      await updateDoc(userRef, { signedEvents: newSignedEvents });
+
       setSubmitted(true);
       alert('제출되었습니다.');
     } catch (error) {
@@ -59,7 +75,6 @@ export default function Sign() {
     }
   };
 
-  const currentUser = users.find(u => u.id.toString() === selectedUser);
   const eventsList = eventName ? eventName.split(/,|\n/).map(s => s.trim()).filter(Boolean) : [];
   
   // 현재 유저가 서명하지 않은 연수 목록

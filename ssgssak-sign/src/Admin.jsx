@@ -1,5 +1,7 @@
 import { useState, useEffect } from 'react';
 import * as XLSX from 'xlsx';
+import { db } from './firebase';
+import { collection, doc, setDoc, onSnapshot, getDocs, writeBatch } from 'firebase/firestore';
 
 export default function Admin() {
   const [eventName, setEventName] = useState('');
@@ -8,11 +10,28 @@ export default function Admin() {
   const [passwordInput, setPasswordInput] = useState('');
 
   useEffect(() => {
-    // Load from local storage
-    const savedEvent = localStorage.getItem('ssgssak_event');
-    const savedUsers = localStorage.getItem('ssgssak_users');
-    if (savedEvent) setEventName(savedEvent);
-    if (savedUsers) setUsers(JSON.parse(savedUsers));
+    // Listen to config
+    const unsubConfig = onSnapshot(doc(db, "config", "appSettings"), (docSnap) => {
+      if (docSnap.exists()) {
+        setEventName(docSnap.data().eventName || '');
+      }
+    });
+
+    // Listen to users
+    const unsubUsers = onSnapshot(collection(db, "users"), (snapshot) => {
+      const usersData = [];
+      snapshot.forEach((doc) => {
+        usersData.push(doc.data());
+      });
+      // 정렬: id 순으로
+      usersData.sort((a, b) => a.id - b.id);
+      setUsers(usersData);
+    });
+
+    return () => {
+      unsubConfig();
+      unsubUsers();
+    };
   }, []);
 
   const handleFileUpload = (e) => {
@@ -20,14 +39,13 @@ export default function Admin() {
     if (!file) return;
 
     const reader = new FileReader();
-    reader.onload = (evt) => {
+    reader.onload = async (evt) => {
       const bstr = evt.target.result;
       const wb = XLSX.read(bstr, { type: 'binary' });
       const wsname = wb.SheetNames[0];
       const ws = wb.Sheets[wsname];
       const data = XLSX.utils.sheet_to_json(ws, { header: 1 });
       
-      // Assuming first column is the name
       const names = data
         .map(row => row[0])
         .filter(name => name && typeof name === 'string' && name.trim() !== '' && name !== '이름' && name !== '성명');
@@ -38,9 +56,27 @@ export default function Admin() {
         signedEvents: {}
       }));
 
-      setUsers(newUsers);
-      localStorage.setItem('ssgssak_users', JSON.stringify(newUsers));
-      alert(`${newUsers.length}명의 명단이 업로드 되었습니다!`);
+      try {
+        // 기존 유저 데이터 지우기
+        const querySnapshot = await getDocs(collection(db, "users"));
+        const batch = writeBatch(db);
+        
+        querySnapshot.forEach((document) => {
+          batch.delete(document.ref);
+        });
+
+        // 새 유저 데이터 추가
+        newUsers.forEach((u) => {
+          const docRef = doc(collection(db, "users"), u.id.toString());
+          batch.set(docRef, u);
+        });
+
+        await batch.commit();
+        alert(`${newUsers.length}명의 명단이 Firestore에 업로드 되었습니다!`);
+      } catch (error) {
+        console.error("업로드 중 오류 발생:", error);
+        alert("업로드 중 오류가 발생했습니다.");
+      }
     };
     reader.readAsBinaryString(file);
   };
@@ -52,9 +88,14 @@ export default function Admin() {
     XLSX.writeFile(wb, "선생님_명단_양식.xlsx");
   };
 
-  const saveEvent = () => {
-    localStorage.setItem('ssgssak_event', eventName);
-    alert('연수 정보가 저장되었습니다!');
+  const saveEvent = async () => {
+    try {
+      await setDoc(doc(db, "config", "appSettings"), { eventName });
+      alert('연수 정보가 저장되었습니다!');
+    } catch (error) {
+      console.error(error);
+      alert('저장 실패!');
+    }
   };
 
   const exportResults = () => {
@@ -72,12 +113,21 @@ export default function Admin() {
     XLSX.writeFile(wb, `서명결과.xlsx`);
   };
 
-  const clearData = () => {
+  const clearData = async () => {
     if(confirm('정말 모든 데이터를 초기화 하시겠습니까?')) {
-      localStorage.removeItem('ssgssak_event');
-      localStorage.removeItem('ssgssak_users');
-      setEventName('');
-      setUsers([]);
+      try {
+        await setDoc(doc(db, "config", "appSettings"), { eventName: '' });
+        const querySnapshot = await getDocs(collection(db, "users"));
+        const batch = writeBatch(db);
+        querySnapshot.forEach((document) => {
+          batch.delete(document.ref);
+        });
+        await batch.commit();
+        alert('모든 데이터가 초기화되었습니다.');
+      } catch(error) {
+        console.error(error);
+        alert('초기화 실패');
+      }
     }
   };
 
