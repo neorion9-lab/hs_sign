@@ -3,7 +3,7 @@ import * as XLSX from 'xlsx';
 import ExcelJS from 'exceljs';
 import { saveAs } from 'file-saver';
 import { db } from './firebase';
-import { collection, doc, setDoc, onSnapshot, getDocs, writeBatch } from 'firebase/firestore';
+import { collection, doc, setDoc, getDoc, onSnapshot, getDocs, writeBatch } from 'firebase/firestore';
 
 export default function Admin() {
   const [eventName, setEventName] = useState('');
@@ -16,15 +16,17 @@ export default function Admin() {
   const [selectedExportEvents, setSelectedExportEvents] = useState([]);
 
   useEffect(() => {
-    // Listen to config
-    const unsubConfig = onSnapshot(doc(db, "config", "appSettings"), (docSnap) => {
+    // Load config once to prevent overwriting user typing
+    const loadConfig = async () => {
+      const docSnap = await getDoc(doc(db, "config", "appSettings"));
       if (docSnap.exists()) {
         const data = docSnap.data();
         setEventName(data.eventName || '');
         setEventDate(data.eventDate || '');
         setEventDates(data.eventDates || {});
       }
-    });
+    };
+    loadConfig();
 
     // Listen to users
     const unsubUsers = onSnapshot(collection(db, "users"), (snapshot) => {
@@ -38,10 +40,21 @@ export default function Admin() {
     });
 
     return () => {
-      unsubConfig();
       unsubUsers();
     };
   }, []);
+
+  // 자동 저장 (타이핑 후 1.5초 뒤 자동 저장)
+  useEffect(() => {
+    const timer = setTimeout(async () => {
+      try {
+        await setDoc(doc(db, "config", "appSettings"), { eventName, eventDate, eventDates });
+      } catch (error) {
+        console.error("Auto-save failed", error);
+      }
+    }, 1500);
+    return () => clearTimeout(timer);
+  }, [eventName, eventDate, eventDates]);
 
   const handleFileUpload = (e) => {
     const file = e.target.files[0];
@@ -173,9 +186,8 @@ export default function Admin() {
   };
 
   const clearData = async () => {
-    if(confirm('정말 모든 데이터를 초기화 하시겠습니까?')) {
+    if(confirm('정말 명단과 서명 데이터를 초기화 하시겠습니까? (연수 정보는 유지됩니다)')) {
       try {
-        await setDoc(doc(db, "config", "appSettings"), { eventName: '', eventDate: '', eventDates: {} });
         const querySnapshot = await getDocs(collection(db, "users"));
         const batch = writeBatch(db);
         querySnapshot.forEach((document) => {
@@ -292,12 +304,17 @@ export default function Admin() {
         </div>
       </div>
 
-      <div className="flex-col mt-4" style={{flexDirection: 'row', gap: '10px'}}>
-        <button className="glass-button" style={{flex: 1, background: '#23d5ab'}} onClick={() => {
+      <div className="flex-col mt-4">
+        <button className="glass-button" style={{width: '100%', background: '#23d5ab'}} onClick={() => {
           setSelectedExportEvents([...eventsList]);
           setIsExportModalOpen(true);
         }}>엑셀로 내보내기</button>
-        <button className="glass-button" style={{flex: 1, background: 'rgba(255,255,255,0.2)'}} onClick={clearData}>초기화</button>
+      </div>
+
+      <div className="flex-col mt-4">
+        <h2>4. 데이터 관리</h2>
+        <p style={{fontSize: '13px', color: '#ff758c', marginBottom: '8px'}}>※ 서명 명단만 초기화되며, 연수 정보는 직접 지우기 전까지 유지됩니다.</p>
+        <button className="glass-button" style={{background: 'rgba(255, 100, 100, 0.2)'}} onClick={clearData}>모든 서명 및 명단 초기화</button>
       </div>
 
       {isExportModalOpen && (
