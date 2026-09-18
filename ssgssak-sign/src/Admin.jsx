@@ -9,6 +9,7 @@ export default function Admin() {
   const [eventName, setEventName] = useState('');
   const [eventDate, setEventDate] = useState(''); // Keep for backward compatibility or remove
   const [eventDates, setEventDates] = useState({});
+  const [isLoaded, setIsLoaded] = useState(false);
   const [users, setUsers] = useState([]);
   const [isAuthenticated, setIsAuthenticated] = useState(false);
   const [passwordInput, setPasswordInput] = useState('');
@@ -25,6 +26,7 @@ export default function Admin() {
         setEventDate(data.eventDate || '');
         setEventDates(data.eventDates || {});
       }
+      setIsLoaded(true);
     };
     loadConfig();
 
@@ -46,6 +48,8 @@ export default function Admin() {
 
   // 자동 저장 (타이핑 후 1.5초 뒤 자동 저장)
   useEffect(() => {
+    if (!isLoaded) return; // 데이터 로드 전 초기화 방지
+
     const timer = setTimeout(async () => {
       try {
         await setDoc(doc(db, "config", "appSettings"), { eventName, eventDate, eventDates });
@@ -54,7 +58,7 @@ export default function Admin() {
       }
     }, 1500);
     return () => clearTimeout(timer);
-  }, [eventName, eventDate, eventDates]);
+  }, [eventName, eventDate, eventDates, isLoaded]);
 
   const handleFileUpload = (e) => {
     const file = e.target.files[0];
@@ -186,15 +190,15 @@ export default function Admin() {
   };
 
   const clearData = async () => {
-    if(confirm('정말 명단과 서명 데이터를 초기화 하시겠습니까? (연수 정보는 유지됩니다)')) {
+    if(confirm('정말 서명 데이터를 모두 초기화 하시겠습니까? (선생님 명단과 연수 정보는 그대로 유지됩니다)')) {
       try {
         const querySnapshot = await getDocs(collection(db, "users"));
         const batch = writeBatch(db);
         querySnapshot.forEach((document) => {
-          batch.delete(document.ref);
+          batch.update(document.ref, { signedEvents: {} });
         });
         await batch.commit();
-        alert('모든 데이터가 초기화되었습니다.');
+        alert('모든 서명 내역이 초기화되었습니다.');
       } catch(error) {
         console.error(error);
         alert('초기화 실패');
@@ -313,8 +317,8 @@ export default function Admin() {
 
       <div className="flex-col mt-4">
         <h2>4. 데이터 관리</h2>
-        <p style={{fontSize: '13px', color: '#ff758c', marginBottom: '8px'}}>※ 서명 명단만 초기화되며, 연수 정보는 직접 지우기 전까지 유지됩니다.</p>
-        <button className="glass-button" style={{background: 'rgba(255, 100, 100, 0.2)'}} onClick={clearData}>모든 서명 및 명단 초기화</button>
+        <p style={{fontSize: '13px', color: '#ff758c', marginBottom: '8px'}}>※ 서명 내역만 깨끗하게 초기화되며, 선생님 명단과 연수 정보는 유지됩니다.</p>
+        <button className="glass-button" style={{background: 'rgba(255, 100, 100, 0.2)'}} onClick={clearData}>모든 서명 내역 초기화 (명단 유지)</button>
       </div>
 
       {isExportModalOpen && (
