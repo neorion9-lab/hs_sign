@@ -2,8 +2,11 @@ import { useState, useEffect, useRef } from 'react';
 import SignatureCanvas from 'react-signature-canvas';
 import { db } from './firebase';
 import { collection, doc, updateDoc, onSnapshot } from 'firebase/firestore';
+import { useParams, useNavigate } from 'react-router-dom';
 
 export default function Sign() {
+  const { schoolId } = useParams();
+  const navigate = useNavigate();
   const [users, setUsers] = useState([]);
   const [selectedUser, setSelectedUser] = useState('');
   const [eventName, setEventName] = useState('');
@@ -14,8 +17,13 @@ export default function Sign() {
   const sigCanvas = useRef({});
 
   useEffect(() => {
+    if (!schoolId) {
+      navigate('/');
+      return;
+    }
+
     // Listen to config
-    const unsubConfig = onSnapshot(doc(db, "config", "appSettings"), (docSnap) => {
+    const unsubConfig = onSnapshot(doc(db, "schools", schoolId, "config", "appSettings"), (docSnap) => {
       if (docSnap.exists()) {
         const data = docSnap.data();
         setEventName(data.eventName || '');
@@ -25,7 +33,7 @@ export default function Sign() {
     });
 
     // Listen to users
-    const unsubUsers = onSnapshot(collection(db, "users"), (snapshot) => {
+    const unsubUsers = onSnapshot(collection(db, "schools", schoolId, "users"), (snapshot) => {
       const usersData = [];
       snapshot.forEach((doc) => {
         usersData.push(doc.data());
@@ -38,7 +46,7 @@ export default function Sign() {
       unsubConfig();
       unsubUsers();
     };
-  }, []);
+  }, [schoolId, navigate]);
 
   const handleClear = () => {
     sigCanvas.current.clear();
@@ -69,7 +77,7 @@ export default function Sign() {
         newSignedEvents[ev] = signData;
       });
 
-      const userRef = doc(db, "users", selectedUser);
+      const userRef = doc(db, "schools", schoolId, "users", selectedUser);
       await updateDoc(userRef, { signedEvents: newSignedEvents });
 
       setSubmitted(true);

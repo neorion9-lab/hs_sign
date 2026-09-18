@@ -4,8 +4,10 @@ import ExcelJS from 'exceljs';
 import { saveAs } from 'file-saver';
 import { db } from './firebase';
 import { collection, doc, setDoc, getDoc, onSnapshot, getDocs, writeBatch } from 'firebase/firestore';
+import { useParams } from 'react-router-dom';
 
 export default function Admin() {
+  const { schoolId } = useParams();
   const [eventDate, setEventDate] = useState('');
   const [eventItems, setEventItems] = useState([{ id: Date.now(), name: '', date: '' }]);
   const eventItemsRef = useRef([{ id: Date.now(), name: '', date: '' }]);
@@ -17,9 +19,11 @@ export default function Admin() {
   const [selectedExportEvents, setSelectedExportEvents] = useState([]);
 
   useEffect(() => {
+    if (!schoolId) return;
+
     // Load config once to prevent overwriting user typing
     const loadConfig = () => {
-      const unsubConfig = onSnapshot(doc(db, "config", "appSettings"), (docSnap) => {
+      const unsubConfig = onSnapshot(doc(db, "schools", schoolId, "config", "appSettings"), (docSnap) => {
         if (docSnap.exists()) {
           const data = docSnap.data();
           const loadedEventName = data.eventName || '';
@@ -49,7 +53,7 @@ export default function Admin() {
     loadConfig();
 
     // Listen to users
-    const unsubUsers = onSnapshot(collection(db, "users"), (snapshot) => {
+    const unsubUsers = onSnapshot(collection(db, "schools", schoolId, "users"), (snapshot) => {
       const usersData = [];
       snapshot.forEach((doc) => {
         usersData.push(doc.data());
@@ -62,7 +66,7 @@ export default function Admin() {
     return () => {
       unsubUsers();
     };
-  }, []);
+  }, [schoolId]);
 
   const saveToFirebase = async (items = eventItemsRef.current) => {
     try {
@@ -76,7 +80,7 @@ export default function Admin() {
         }
       });
 
-      await setDoc(doc(db, "config", "appSettings"), { 
+      await setDoc(doc(db, "schools", schoolId, "config", "appSettings"), { 
         eventName: eventNameString, 
         eventDate, 
         eventDates: datesObj 
@@ -94,7 +98,7 @@ export default function Admin() {
       saveToFirebase(eventItemsRef.current);
     }, 1500);
     return () => clearTimeout(timer);
-  }, [eventItems, eventDate, isLoaded]);
+  }, [eventItems, eventDate, isLoaded, schoolId]);
 
   const eventsList = eventItems.map(item => item.name.trim()).filter(Boolean);
   const derivedEventDates = {};
@@ -126,7 +130,7 @@ export default function Admin() {
 
       try {
         // 기존 유저 데이터 지우기
-        const querySnapshot = await getDocs(collection(db, "users"));
+        const querySnapshot = await getDocs(collection(db, "schools", schoolId, "users"));
         const batch = writeBatch(db);
         
         querySnapshot.forEach((document) => {
@@ -135,7 +139,7 @@ export default function Admin() {
 
         // 새 유저 데이터 추가
         newUsers.forEach((u) => {
-          const docRef = doc(collection(db, "users"), u.id.toString());
+          const docRef = doc(collection(db, "schools", schoolId, "users"), u.id.toString());
           batch.set(docRef, u);
         });
 
