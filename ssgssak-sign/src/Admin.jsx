@@ -18,9 +18,8 @@ export default function Admin() {
 
   useEffect(() => {
     // Load config once to prevent overwriting user typing
-    const loadConfig = async () => {
-      try {
-        const docSnap = await getDoc(doc(db, "config", "appSettings"));
+    const loadConfig = () => {
+      const unsubConfig = onSnapshot(doc(db, "config", "appSettings"), (docSnap) => {
         if (docSnap.exists()) {
           const data = docSnap.data();
           const loadedEventName = data.eventName || '';
@@ -40,11 +39,12 @@ export default function Admin() {
             eventItemsRef.current = newItems;
           }
         }
-      } catch (error) {
-        console.error("Failed to load config:", error);
-      } finally {
         setIsLoaded(true);
-      }
+        unsubConfig(); // 최초 1회 로드 후 즉시 구독 취소 (타이핑 덮어쓰기 방지)
+      }, (error) => {
+        console.error("Failed to load config:", error);
+        setIsLoaded(true);
+      });
     };
     loadConfig();
 
