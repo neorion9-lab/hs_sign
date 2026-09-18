@@ -102,8 +102,8 @@ body {
 }
 
 .glass-select option {
-  background: #23a6d5; /* fallback for options */
-  color: white;
+  background: #ffffff; /* 모바일에서 흰 배경에 흰 글씨가 되지 않도록 대비 설정 */
+  color: #333333;
 }
 
 /* Titles */
