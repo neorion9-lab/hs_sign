@@ -6,9 +6,8 @@ import { db } from './firebase';
 import { collection, doc, setDoc, getDoc, onSnapshot, getDocs, writeBatch } from 'firebase/firestore';
 
 export default function Admin() {
-  const [eventName, setEventName] = useState('');
-  const [eventDate, setEventDate] = useState(''); // Keep for backward compatibility or remove
-  const [eventDates, setEventDates] = useState({});
+  const [eventDate, setEventDate] = useState('');
+  const [eventItems, setEventItems] = useState([]);
   const [isLoaded, setIsLoaded] = useState(false);
   const [users, setUsers] = useState([]);
   const [isAuthenticated, setIsAuthenticated] = useState(false);
@@ -22,9 +21,25 @@ export default function Admin() {
       const docSnap = await getDoc(doc(db, "config", "appSettings"));
       if (docSnap.exists()) {
         const data = docSnap.data();
-        setEventName(data.eventName || '');
+        const loadedEventName = data.eventName || '';
+        const loadedEventDates = data.eventDates || {};
+        
         setEventDate(data.eventDate || '');
-        setEventDates(data.eventDates || {});
+        
+        const names = loadedEventName.split(/,|\n/).map(s => s.trim()).filter(Boolean);
+        const newItems = names.map((name, index) => ({
+          id: Date.now() + index,
+          name: name,
+          date: loadedEventDates[name] || data.eventDate || ''
+        }));
+        
+        if (newItems.length === 0) {
+          setEventItems([{ id: Date.now(), name: '', date: '' }]);
+        } else {
+          setEventItems(newItems);
+        }
+      } else {
+        setEventItems([{ id: Date.now(), name: '', date: '' }]);
       }
       setIsLoaded(true);
     };
@@ -52,13 +67,33 @@ export default function Admin() {
 
     const timer = setTimeout(async () => {
       try {
-        await setDoc(doc(db, "config", "appSettings"), { eventName, eventDate, eventDates });
+        const names = eventItems.map(item => item.name.trim()).filter(Boolean);
+        const eventNameString = names.join(', ');
+        
+        const datesObj = {};
+        eventItems.forEach(item => {
+          if (item.name.trim()) {
+            datesObj[item.name.trim()] = item.date;
+          }
+        });
+
+        await setDoc(doc(db, "config", "appSettings"), { 
+          eventName: eventNameString, 
+          eventDate, 
+          eventDates: datesObj 
+        }, { merge: true });
       } catch (error) {
         console.error("Auto-save failed", error);
       }
     }, 1500);
     return () => clearTimeout(timer);
-  }, [eventName, eventDate, eventDates, isLoaded]);
+  }, [eventItems, eventDate, isLoaded]);
+
+  const eventsList = eventItems.map(item => item.name.trim()).filter(Boolean);
+  const derivedEventDates = {};
+  eventItems.forEach(item => {
+    if (item.name.trim()) derivedEventDates[item.name.trim()] = item.date;
+  });
 
   const handleFileUpload = (e) => {
     const file = e.target.files[0];
@@ -114,16 +149,6 @@ export default function Admin() {
     XLSX.writeFile(wb, "선생님_명단_양식.xlsx");
   };
 
-  const saveEvent = async () => {
-    try {
-      await setDoc(doc(db, "config", "appSettings"), { eventName, eventDate, eventDates });
-      alert('연수 정보가 저장되었습니다!');
-    } catch (error) {
-      console.error(error);
-      alert('저장 실패!');
-    }
-  };
-
   const exportSelectedResults = async () => {
     if (selectedExportEvents.length === 0) {
       alert('내보낼 연수를 선택해주세요.');
@@ -151,7 +176,7 @@ export default function Admin() {
 
         users.forEach((u, rowIndex) => {
           // 해당 연수의 개별 날짜 가져오기 (없으면 예전 공통 날짜 사용)
-          const dateForEvent = eventDates[ev] || eventDate || '';
+          const dateForEvent = derivedEventDates[ev] || eventDate || '';
           const row = worksheet.addRow({ name: u.name, date: dateForEvent });
           row.alignment = { vertical: 'middle', horizontal: 'center' };
 
@@ -206,7 +231,7 @@ export default function Admin() {
     }
   };
 
-  const eventsList = eventName.split(/,|\n/).map(s => s.trim()).filter(Boolean);
+
 
   const handleLogin = (e) => {
     e.preventDefault();
@@ -241,35 +266,57 @@ export default function Admin() {
       
       <div className="flex-col">
         <h2>1. 연수 정보 설정</h2>
-        <textarea 
-          className="glass-input" 
-          placeholder="연수명을 입력하세요 (여러 개일 경우 쉼표(,)나 엔터로 구분해 주세요!)" 
-          value={eventName}
-          onChange={(e) => setEventName(e.target.value)}
-          rows="3"
-        />
-        
-        {eventsList.length > 0 && (
-          <div style={{marginTop: '8px', background: 'rgba(255,255,255,0.1)', padding: '16px', borderRadius: '12px'}}>
-            <p style={{margin: '0 0 12px 0', fontSize: '15px', fontWeight: 'bold'}}>🗓️ 각 연수별 날짜를 지정해주세요:</p>
-            <div style={{display: 'flex', flexDirection: 'column', gap: '10px'}}>
-              {eventsList.map(ev => (
-                <div key={ev} style={{display: 'flex', alignItems: 'center', gap: '12px'}}>
-                  <span style={{flex: 1, fontSize: '15px', textOverflow: 'ellipsis', overflow: 'hidden', whiteSpace: 'nowrap'}}>{ev}</span>
-                  <input 
-                    type="date"
-                    className="glass-input" 
-                    style={{width: 'auto', padding: '8px 12px', fontSize: '15px'}}
-                    value={eventDates[ev] || ''}
-                    onChange={(e) => setEventDates({...eventDates, [ev]: e.target.value})}
-                  />
-                </div>
-              ))}
+        <p style={{fontSize: '13px', color: 'rgba(255,255,255,0.8)', marginBottom: '12px'}}>
+          ※ 콤마(,)는 사용할 수 없습니다. 입력 내용은 1.5초 뒤 자동으로 저장됩니다.
+        </p>
+        <div style={{display: 'flex', flexDirection: 'column', gap: '10px'}}>
+          {eventItems.map((item, index) => (
+            <div key={item.id} style={{display: 'flex', alignItems: 'center', gap: '8px', background: 'rgba(255,255,255,0.1)', padding: '12px', borderRadius: '12px'}}>
+              <input 
+                type="text"
+                className="glass-input"
+                style={{flex: 1, padding: '8px 12px', fontSize: '15px'}}
+                placeholder="연수 이름"
+                value={item.name}
+                onChange={(e) => {
+                  const val = e.target.value.replace(/,/g, ''); // 콤마 방지
+                  const newItems = [...eventItems];
+                  newItems[index].name = val;
+                  setEventItems(newItems);
+                }}
+              />
+              <input 
+                type="date"
+                className="glass-input"
+                style={{width: 'auto', padding: '8px 12px', fontSize: '15px'}}
+                value={item.date}
+                onChange={(e) => {
+                  const newItems = [...eventItems];
+                  newItems[index].date = e.target.value;
+                  setEventItems(newItems);
+                }}
+              />
+              <button 
+                onClick={() => {
+                  setEventItems(eventItems.filter(i => i.id !== item.id));
+                }}
+                style={{background: 'none', border: 'none', color: '#ff758c', cursor: 'pointer', fontSize: '16px', padding: '4px 8px'}}
+                title="삭제"
+              >
+                삭제
+              </button>
             </div>
-          </div>
-        )}
-        
-        <button className="glass-button" style={{marginTop: '8px'}} onClick={saveEvent}>연수 정보 저장</button>
+          ))}
+        </div>
+        <button 
+          className="glass-button" 
+          style={{marginTop: '12px', background: 'rgba(255,255,255,0.2)'}} 
+          onClick={() => {
+            setEventItems([...eventItems, { id: Date.now(), name: '', date: '' }]);
+          }}
+        >
+          ➕ 연수 추가
+        </button>
       </div>
 
       <div className="flex-col mt-4">
