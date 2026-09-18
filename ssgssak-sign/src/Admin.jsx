@@ -61,30 +61,34 @@ export default function Admin() {
     };
   }, []);
 
+  const saveToFirebase = async (items = eventItems) => {
+    try {
+      const names = items.map(item => item.name.trim()).filter(Boolean);
+      const eventNameString = names.join(', ');
+      
+      const datesObj = {};
+      items.forEach(item => {
+        if (item.name.trim()) {
+          datesObj[item.name.trim()] = item.date;
+        }
+      });
+
+      await setDoc(doc(db, "config", "appSettings"), { 
+        eventName: eventNameString, 
+        eventDate, 
+        eventDates: datesObj 
+      }, { merge: true });
+    } catch (error) {
+      console.error("Auto-save failed", error);
+    }
+  };
+
   // 자동 저장 (타이핑 후 1.5초 뒤 자동 저장)
   useEffect(() => {
-    if (!isLoaded) return; // 데이터 로드 전 초기화 방지
+    if (!isLoaded) return; 
 
-    const timer = setTimeout(async () => {
-      try {
-        const names = eventItems.map(item => item.name.trim()).filter(Boolean);
-        const eventNameString = names.join(', ');
-        
-        const datesObj = {};
-        eventItems.forEach(item => {
-          if (item.name.trim()) {
-            datesObj[item.name.trim()] = item.date;
-          }
-        });
-
-        await setDoc(doc(db, "config", "appSettings"), { 
-          eventName: eventNameString, 
-          eventDate, 
-          eventDates: datesObj 
-        }, { merge: true });
-      } catch (error) {
-        console.error("Auto-save failed", error);
-      }
+    const timer = setTimeout(() => {
+      saveToFirebase(eventItems);
     }, 1500);
     return () => clearTimeout(timer);
   }, [eventItems, eventDate, isLoaded]);
@@ -284,6 +288,7 @@ export default function Admin() {
                   newItems[index].name = val;
                   setEventItems(newItems);
                 }}
+                onBlur={() => saveToFirebase(eventItems)}
               />
               <input 
                 type="date"
@@ -295,6 +300,7 @@ export default function Admin() {
                   newItems[index].date = e.target.value;
                   setEventItems(newItems);
                 }}
+                onBlur={() => saveToFirebase(eventItems)}
               />
               <button 
                 onClick={() => {
