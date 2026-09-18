@@ -144,8 +144,9 @@ export default function Admin() {
               extension: 'png',
             });
             worksheet.addImage(imageId, {
-              tl: { col: 2, row: rowIndex + 1 },
-              ext: { width: 140, height: 60 }
+              tl: { col: 2.15, row: rowIndex + 1.1 }, // 가로/세로 오프셋을 주어 가운데 정렬처럼 보이게 함
+              ext: { width: 140, height: 50 },
+              editAs: 'oneCell'
             });
           } else {
             row.getCell(3).value = '미완료'; 
