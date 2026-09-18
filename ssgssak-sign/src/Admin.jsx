@@ -7,7 +7,7 @@ import { collection, doc, setDoc, getDoc, onSnapshot, getDocs, writeBatch } from
 
 export default function Admin() {
   const [eventDate, setEventDate] = useState('');
-  const [eventItems, setEventItems] = useState([]);
+  const [eventItems, setEventItems] = useState([{ id: Date.now(), name: '', date: '' }]);
   const [isLoaded, setIsLoaded] = useState(false);
   const [users, setUsers] = useState([]);
   const [isAuthenticated, setIsAuthenticated] = useState(false);
@@ -18,30 +18,31 @@ export default function Admin() {
   useEffect(() => {
     // Load config once to prevent overwriting user typing
     const loadConfig = async () => {
-      const docSnap = await getDoc(doc(db, "config", "appSettings"));
-      if (docSnap.exists()) {
-        const data = docSnap.data();
-        const loadedEventName = data.eventName || '';
-        const loadedEventDates = data.eventDates || {};
-        
-        setEventDate(data.eventDate || '');
-        
-        const names = loadedEventName.split(/,|\n/).map(s => s.trim()).filter(Boolean);
-        const newItems = names.map((name, index) => ({
-          id: Date.now() + index,
-          name: name,
-          date: loadedEventDates[name] || data.eventDate || ''
-        }));
-        
-        if (newItems.length === 0) {
-          setEventItems([{ id: Date.now(), name: '', date: '' }]);
-        } else {
-          setEventItems(newItems);
+      try {
+        const docSnap = await getDoc(doc(db, "config", "appSettings"));
+        if (docSnap.exists()) {
+          const data = docSnap.data();
+          const loadedEventName = data.eventName || '';
+          const loadedEventDates = data.eventDates || {};
+          
+          setEventDate(data.eventDate || '');
+          
+          const names = loadedEventName.split(/,|\n/).map(s => s.trim()).filter(Boolean);
+          const newItems = names.map((name, index) => ({
+            id: Date.now() + index,
+            name: name,
+            date: loadedEventDates[name] || data.eventDate || ''
+          }));
+          
+          if (newItems.length > 0) {
+            setEventItems(newItems);
+          }
         }
-      } else {
-        setEventItems([{ id: Date.now(), name: '', date: '' }]);
+      } catch (error) {
+        console.error("Failed to load config:", error);
+      } finally {
+        setIsLoaded(true);
       }
-      setIsLoaded(true);
     };
     loadConfig();
 
