@@ -8,6 +8,7 @@ import { collection, doc, setDoc, getDoc, onSnapshot, getDocs, writeBatch } from
 export default function Admin() {
   const [eventDate, setEventDate] = useState('');
   const [eventItems, setEventItems] = useState([{ id: Date.now(), name: '', date: '' }]);
+  const eventItemsRef = useRef([{ id: Date.now(), name: '', date: '' }]);
   const [isLoaded, setIsLoaded] = useState(false);
   const [users, setUsers] = useState([]);
   const [isAuthenticated, setIsAuthenticated] = useState(false);
@@ -36,6 +37,7 @@ export default function Admin() {
           
           if (newItems.length > 0) {
             setEventItems(newItems);
+            eventItemsRef.current = newItems;
           }
         }
       } catch (error) {
@@ -62,7 +64,7 @@ export default function Admin() {
     };
   }, []);
 
-  const saveToFirebase = async (items = eventItems) => {
+  const saveToFirebase = async (items = eventItemsRef.current) => {
     try {
       const names = items.map(item => item.name.trim()).filter(Boolean);
       const eventNameString = names.join(', ');
@@ -89,7 +91,7 @@ export default function Admin() {
     if (!isLoaded) return; 
 
     const timer = setTimeout(() => {
-      saveToFirebase(eventItems);
+      saveToFirebase(eventItemsRef.current);
     }, 1500);
     return () => clearTimeout(timer);
   }, [eventItems, eventDate, isLoaded]);
@@ -288,8 +290,9 @@ export default function Admin() {
                   const newItems = [...eventItems];
                   newItems[index].name = val;
                   setEventItems(newItems);
+                  eventItemsRef.current = newItems;
                 }}
-                onBlur={() => saveToFirebase(eventItems)}
+                onBlur={() => saveToFirebase()}
               />
               <input 
                 type="date"
@@ -300,12 +303,16 @@ export default function Admin() {
                   const newItems = [...eventItems];
                   newItems[index].date = e.target.value;
                   setEventItems(newItems);
+                  eventItemsRef.current = newItems;
                 }}
-                onBlur={() => saveToFirebase(eventItems)}
+                onBlur={() => saveToFirebase()}
               />
               <button 
                 onClick={() => {
-                  setEventItems(eventItems.filter(i => i.id !== item.id));
+                  const newItems = eventItems.filter(i => i.id !== item.id);
+                  setEventItems(newItems);
+                  eventItemsRef.current = newItems;
+                  saveToFirebase(newItems);
                 }}
                 style={{background: 'none', border: 'none', color: '#ff758c', cursor: 'pointer', fontSize: '16px', padding: '4px 8px'}}
                 title="삭제"
@@ -319,7 +326,9 @@ export default function Admin() {
           className="glass-button" 
           style={{marginTop: '12px', background: 'rgba(255,255,255,0.2)'}} 
           onClick={() => {
-            setEventItems([...eventItems, { id: Date.now(), name: '', date: '' }]);
+            const newItems = [...eventItems, { id: Date.now(), name: '', date: '' }];
+            setEventItems(newItems);
+            eventItemsRef.current = newItems;
           }}
         >
           ➕ 연수 추가
