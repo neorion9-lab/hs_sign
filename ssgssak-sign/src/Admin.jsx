@@ -7,10 +7,13 @@ import { collection, doc, setDoc, onSnapshot, getDocs, writeBatch } from 'fireba
 
 export default function Admin() {
   const [eventName, setEventName] = useState('');
-  const [eventDate, setEventDate] = useState('');
+  const [eventDate, setEventDate] = useState(''); // Keep for backward compatibility or remove
+  const [eventDates, setEventDates] = useState({});
   const [users, setUsers] = useState([]);
   const [isAuthenticated, setIsAuthenticated] = useState(false);
   const [passwordInput, setPasswordInput] = useState('');
+  const [isExportModalOpen, setIsExportModalOpen] = useState(false);
+  const [selectedExportEvents, setSelectedExportEvents] = useState([]);
 
   useEffect(() => {
     // Listen to config
@@ -19,6 +22,7 @@ export default function Admin() {
         const data = docSnap.data();
         setEventName(data.eventName || '');
         setEventDate(data.eventDate || '');
+        setEventDates(data.eventDates || {});
       }
     });
 
@@ -95,7 +99,7 @@ export default function Admin() {
 
   const saveEvent = async () => {
     try {
-      await setDoc(doc(db, "config", "appSettings"), { eventName, eventDate });
+      await setDoc(doc(db, "config", "appSettings"), { eventName, eventDate, eventDates });
       alert('연수 정보가 저장되었습니다!');
     } catch (error) {
       console.error(error);
@@ -103,65 +107,74 @@ export default function Admin() {
     }
   };
 
-  const exportResults = async () => {
+  const exportSelectedResults = async () => {
+    if (selectedExportEvents.length === 0) {
+      alert('내보낼 연수를 선택해주세요.');
+      return;
+    }
+    
     try {
-      const eventsList = eventName.split(/,|\n/).map(s => s.trim()).filter(Boolean);
-      const workbook = new ExcelJS.Workbook();
-      const worksheet = workbook.addWorksheet('서명결과');
+      for (const ev of selectedExportEvents) {
+        const workbook = new ExcelJS.Workbook();
+        // 엑셀 시트 이름에는 금지된 문자가 있을 수 있으므로 안전하게 변환하거나 자르기
+        const safeSheetName = ev.replace(/[\]\[*?:\/\\]/g, '').substring(0, 31) || '서명결과';
+        const worksheet = workbook.addWorksheet(safeSheetName);
 
-      // 서명 이미지가 잘 보이도록 기본 행 높이 설정
-      worksheet.properties.defaultRowHeight = 60;
+        worksheet.properties.defaultRowHeight = 60;
 
-      // 헤더 설정
-      const columns = [{ header: '이름', key: 'name', width: 20 }];
-      eventsList.forEach(ev => {
-        columns.push({ header: ev, key: ev, width: 25 });
-      });
-      worksheet.columns = columns;
+        const columns = [
+          { header: '이름', key: 'name', width: 20 },
+          { header: '연수날짜', key: 'date', width: 20 },
+          { header: ev, key: ev, width: 25 }
+        ];
+        worksheet.columns = columns;
 
-      worksheet.getRow(1).font = { bold: true };
-      worksheet.getRow(1).alignment = { vertical: 'middle', horizontal: 'center' };
+        worksheet.getRow(1).font = { bold: true };
+        worksheet.getRow(1).alignment = { vertical: 'middle', horizontal: 'center' };
 
-      // 각 선생님 데이터 및 이미지 삽입
-      users.forEach((u, rowIndex) => {
-        const row = worksheet.addRow({ name: u.name });
-        row.alignment = { vertical: 'middle', horizontal: 'center' };
+        users.forEach((u, rowIndex) => {
+          // 해당 연수의 개별 날짜 가져오기 (없으면 예전 공통 날짜 사용)
+          const dateForEvent = eventDates[ev] || eventDate || '';
+          const row = worksheet.addRow({ name: u.name, date: dateForEvent });
+          row.alignment = { vertical: 'middle', horizontal: 'center' };
 
-        eventsList.forEach((ev, colIndex) => {
           if (u.signedEvents && u.signedEvents[ev]) {
-            // Base64 이미지를 엑셀 워크북에 추가
             const imageId = workbook.addImage({
               base64: u.signedEvents[ev],
               extension: 'png',
             });
-            
-            // 이미지를 특정 셀 위치에 넣기 (tl: Top-Left 좌표)
-            // col 0 = 이름, col 1 = 첫번째 이벤트 (0-indexed)
-            // row 0 = 헤더, row 1 = 첫번째 선생님 (0-indexed)
             worksheet.addImage(imageId, {
-              tl: { col: colIndex + 1, row: rowIndex + 1 },
-              ext: { width: 140, height: 60 } // 셀 크기에 맞게 이미지 크기 조정
+              tl: { col: 2, row: rowIndex + 1 },
+              ext: { width: 140, height: 60 }
             });
           } else {
-            // 서명이 없는 경우 텍스트 삽입 (getCell은 1-indexed)
-            row.getCell(colIndex + 2).value = '미완료'; 
+            row.getCell(3).value = '미완료'; 
           }
         });
-      });
 
-      // 파일 다운로드
-      const buffer = await workbook.xlsx.writeBuffer();
-      saveAs(new Blob([buffer]), '서명결과.xlsx');
+        const buffer = await workbook.xlsx.writeBuffer();
+        const safeFileName = ev.replace(/[<>:"/\\|?*]/g, '_');
+        saveAs(new Blob([buffer]), `${safeFileName}_서명결과.xlsx`);
+      }
+      setIsExportModalOpen(false);
     } catch (error) {
       console.error(error);
       alert('엑셀 파일 생성 중 오류가 발생했습니다.');
     }
   };
 
+  const handleExportEventCheck = (ev) => {
+    if (selectedExportEvents.includes(ev)) {
+      setSelectedExportEvents(selectedExportEvents.filter(e => e !== ev));
+    } else {
+      setSelectedExportEvents([...selectedExportEvents, ev]);
+    }
+  };
+
   const clearData = async () => {
     if(confirm('정말 모든 데이터를 초기화 하시겠습니까?')) {
       try {
-        await setDoc(doc(db, "config", "appSettings"), { eventName: '', eventDate: '' });
+        await setDoc(doc(db, "config", "appSettings"), { eventName: '', eventDate: '', eventDates: {} });
         const querySnapshot = await getDocs(collection(db, "users"));
         const batch = writeBatch(db);
         querySnapshot.forEach((document) => {
@@ -218,14 +231,28 @@ export default function Admin() {
           onChange={(e) => setEventName(e.target.value)}
           rows="3"
         />
-        <input 
-          type="date"
-          className="glass-input" 
-          style={{marginTop: '8px'}}
-          value={eventDate}
-          onChange={(e) => setEventDate(e.target.value)}
-        />
-        <button className="glass-button" onClick={saveEvent}>연수 정보 저장</button>
+        
+        {eventsList.length > 0 && (
+          <div style={{marginTop: '8px', background: 'rgba(255,255,255,0.1)', padding: '16px', borderRadius: '12px'}}>
+            <p style={{margin: '0 0 12px 0', fontSize: '15px', fontWeight: 'bold'}}>🗓️ 각 연수별 날짜를 지정해주세요:</p>
+            <div style={{display: 'flex', flexDirection: 'column', gap: '10px'}}>
+              {eventsList.map(ev => (
+                <div key={ev} style={{display: 'flex', alignItems: 'center', gap: '12px'}}>
+                  <span style={{flex: 1, fontSize: '15px', textOverflow: 'ellipsis', overflow: 'hidden', whiteSpace: 'nowrap'}}>{ev}</span>
+                  <input 
+                    type="date"
+                    className="glass-input" 
+                    style={{width: 'auto', padding: '8px 12px', fontSize: '15px'}}
+                    value={eventDates[ev] || ''}
+                    onChange={(e) => setEventDates({...eventDates, [ev]: e.target.value})}
+                  />
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+        
+        <button className="glass-button" style={{marginTop: '8px'}} onClick={saveEvent}>연수 정보 저장</button>
       </div>
 
       <div className="flex-col mt-4">
@@ -265,9 +292,41 @@ export default function Admin() {
       </div>
 
       <div className="flex-col mt-4" style={{flexDirection: 'row', gap: '10px'}}>
-        <button className="glass-button" style={{flex: 1, background: '#23d5ab'}} onClick={exportResults}>엑셀로 내보내기</button>
+        <button className="glass-button" style={{flex: 1, background: '#23d5ab'}} onClick={() => {
+          setSelectedExportEvents([...eventsList]);
+          setIsExportModalOpen(true);
+        }}>엑셀로 내보내기</button>
         <button className="glass-button" style={{flex: 1, background: 'rgba(255,255,255,0.2)'}} onClick={clearData}>초기화</button>
       </div>
+
+      {isExportModalOpen && (
+        <div style={{
+          position: 'fixed', top: 0, left: 0, width: '100%', height: '100%', 
+          background: 'rgba(0,0,0,0.5)', display: 'flex', justifyContent: 'center', alignItems: 'center', zIndex: 1000
+        }}>
+          <div className="glass-card flex-col" style={{width: '90%', maxWidth: '400px', background: 'rgba(30, 30, 40, 0.9)'}}>
+            <h2>📥 엑셀 내보내기 선택</h2>
+            <p style={{fontSize: '14px', marginBottom: '10px'}}>다운로드할 연수를 선택하세요. 각각의 파일로 다운로드됩니다.</p>
+            <div style={{display: 'flex', flexDirection: 'column', gap: '8px', maxHeight: '250px', overflowY: 'auto'}}>
+              {eventsList.map(ev => (
+                <label key={ev} style={{display: 'flex', alignItems: 'center', gap: '8px', cursor: 'pointer'}}>
+                  <input 
+                    type="checkbox" 
+                    checked={selectedExportEvents.includes(ev)} 
+                    onChange={() => handleExportEventCheck(ev)}
+                    style={{width: '20px', height: '20px'}}
+                  />
+                  {ev}
+                </label>
+              ))}
+            </div>
+            <div style={{display: 'flex', gap: '10px', marginTop: '16px'}}>
+              <button className="glass-button" style={{flex: 1, background: 'rgba(255,255,255,0.2)'}} onClick={() => setIsExportModalOpen(false)}>취소</button>
+              <button className="glass-button" style={{flex: 1, background: '#23d5ab'}} onClick={exportSelectedResults}>다운로드</button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

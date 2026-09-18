@@ -8,6 +8,7 @@ export default function Sign() {
   const [selectedUser, setSelectedUser] = useState('');
   const [eventName, setEventName] = useState('');
   const [eventDate, setEventDate] = useState('');
+  const [eventDates, setEventDates] = useState({});
   const [selectedEvents, setSelectedEvents] = useState([]);
   const [submitted, setSubmitted] = useState(false);
   const sigCanvas = useRef({});
@@ -19,6 +20,7 @@ export default function Sign() {
         const data = docSnap.data();
         setEventName(data.eventName || '');
         setEventDate(data.eventDate || '');
+        setEventDates(data.eventDates || {});
       }
     });
 
@@ -124,8 +126,7 @@ export default function Sign() {
   return (
     <div className="glass-card flex-col">
       <div style={{ textAlign: 'center', marginBottom: '16px' }}>
-        <h2 style={{ whiteSpace: 'pre-wrap', marginBottom: eventDate ? '8px' : '16px' }}>📝 {eventName || '연수 서명'}</h2>
-        {eventDate && <p style={{ fontSize: '16px', color: 'rgba(255, 255, 255, 0.9)' }}>🗓️ {eventDate}</p>}
+        <h2 style={{ whiteSpace: 'pre-wrap', margin: 0 }}>📝 {eventName || '연수 서명'}</h2>
       </div>
       
       <div className="flex-col">
@@ -162,17 +163,23 @@ export default function Sign() {
             <div className="flex-col mt-4">
               <label style={{fontWeight: 600}}>2. 서명할 연수 선택</label>
               <div style={{display: 'flex', flexDirection: 'column', gap: '8px', marginTop: '8px'}}>
-                {pendingEvents.map(ev => (
-                  <label key={ev} style={{display: 'flex', alignItems: 'center', gap: '8px', cursor: 'pointer'}}>
-                    <input 
-                      type="checkbox" 
-                      checked={selectedEvents.includes(ev)} 
-                      onChange={() => handleEventCheck(ev)}
-                      style={{width: '20px', height: '20px'}}
-                    />
-                    {ev}
-                  </label>
-                ))}
+                {pendingEvents.map(ev => {
+                  const evDate = eventDates[ev] || eventDate;
+                  return (
+                    <label key={ev} style={{display: 'flex', alignItems: 'center', gap: '8px', cursor: 'pointer', background: 'rgba(255,255,255,0.1)', padding: '12px', borderRadius: '8px'}}>
+                      <input 
+                        type="checkbox" 
+                        checked={selectedEvents.includes(ev)} 
+                        onChange={() => handleEventCheck(ev)}
+                        style={{width: '20px', height: '20px'}}
+                      />
+                      <div style={{display: 'flex', flexDirection: 'column'}}>
+                        <span>{ev}</span>
+                        {evDate && <span style={{fontSize: '13px', color: 'rgba(255,255,255,0.7)'}}>🗓️ {evDate}</span>}
+                      </div>
+                    </label>
+                  );
+                })}
               </div>
             </div>
           )}
