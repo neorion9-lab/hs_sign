@@ -7,6 +7,7 @@ import { collection, doc, setDoc, onSnapshot, getDocs, writeBatch } from 'fireba
 
 export default function Admin() {
   const [eventName, setEventName] = useState('');
+  const [eventDate, setEventDate] = useState('');
   const [users, setUsers] = useState([]);
   const [isAuthenticated, setIsAuthenticated] = useState(false);
   const [passwordInput, setPasswordInput] = useState('');
@@ -15,7 +16,9 @@ export default function Admin() {
     // Listen to config
     const unsubConfig = onSnapshot(doc(db, "config", "appSettings"), (docSnap) => {
       if (docSnap.exists()) {
-        setEventName(docSnap.data().eventName || '');
+        const data = docSnap.data();
+        setEventName(data.eventName || '');
+        setEventDate(data.eventDate || '');
       }
     });
 
@@ -92,7 +95,7 @@ export default function Admin() {
 
   const saveEvent = async () => {
     try {
-      await setDoc(doc(db, "config", "appSettings"), { eventName });
+      await setDoc(doc(db, "config", "appSettings"), { eventName, eventDate });
       alert('연수 정보가 저장되었습니다!');
     } catch (error) {
       console.error(error);
@@ -158,7 +161,7 @@ export default function Admin() {
   const clearData = async () => {
     if(confirm('정말 모든 데이터를 초기화 하시겠습니까?')) {
       try {
-        await setDoc(doc(db, "config", "appSettings"), { eventName: '' });
+        await setDoc(doc(db, "config", "appSettings"), { eventName: '', eventDate: '' });
         const querySnapshot = await getDocs(collection(db, "users"));
         const batch = writeBatch(db);
         querySnapshot.forEach((document) => {
@@ -214,6 +217,13 @@ export default function Admin() {
           value={eventName}
           onChange={(e) => setEventName(e.target.value)}
           rows="3"
+        />
+        <input 
+          type="date"
+          className="glass-input" 
+          style={{marginTop: '8px'}}
+          value={eventDate}
+          onChange={(e) => setEventDate(e.target.value)}
         />
         <button className="glass-button" onClick={saveEvent}>연수 정보 저장</button>
       </div>

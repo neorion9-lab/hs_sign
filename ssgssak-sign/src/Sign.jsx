@@ -7,6 +7,7 @@ export default function Sign() {
   const [users, setUsers] = useState([]);
   const [selectedUser, setSelectedUser] = useState('');
   const [eventName, setEventName] = useState('');
+  const [eventDate, setEventDate] = useState('');
   const [selectedEvents, setSelectedEvents] = useState([]);
   const [submitted, setSubmitted] = useState(false);
   const sigCanvas = useRef({});
@@ -15,7 +16,9 @@ export default function Sign() {
     // Listen to config
     const unsubConfig = onSnapshot(doc(db, "config", "appSettings"), (docSnap) => {
       if (docSnap.exists()) {
-        setEventName(docSnap.data().eventName || '');
+        const data = docSnap.data();
+        setEventName(data.eventName || '');
+        setEventDate(data.eventDate || '');
       }
     });
 
@@ -81,6 +84,20 @@ export default function Sign() {
   const pendingEvents = currentUser ? eventsList.filter(ev => !(currentUser.signedEvents && currentUser.signedEvents[ev])) : [];
   const isAllSigned = currentUser && eventsList.length > 0 && pendingEvents.length === 0;
 
+  const [padWidth, setPadWidth] = useState(500);
+
+  useEffect(() => {
+    const updateWidth = () => {
+      // Account for body padding (40px) and glass-card padding (64px)
+      const availableWidth = window.innerWidth - 110;
+      setPadWidth(Math.max(250, Math.min(availableWidth, 600)));
+    };
+    
+    updateWidth();
+    window.addEventListener('resize', updateWidth);
+    return () => window.removeEventListener('resize', updateWidth);
+  }, []);
+
   const handleEventCheck = (ev) => {
     if (selectedEvents.includes(ev)) {
       setSelectedEvents(selectedEvents.filter(e => e !== ev));
@@ -106,7 +123,10 @@ export default function Sign() {
 
   return (
     <div className="glass-card flex-col">
-      <h2 style={{ whiteSpace: 'pre-wrap' }}>📝 {eventName || '연수 서명'}</h2>
+      <div style={{ textAlign: 'center', marginBottom: '16px' }}>
+        <h2 style={{ whiteSpace: 'pre-wrap', marginBottom: eventDate ? '8px' : '16px' }}>📝 {eventName || '연수 서명'}</h2>
+        {eventDate && <p style={{ fontSize: '16px', color: 'rgba(255, 255, 255, 0.9)' }}>🗓️ {eventDate}</p>}
+      </div>
       
       <div className="flex-col">
         <label style={{fontWeight: 600}}>1. 본인 이름 선택</label>
@@ -167,11 +187,11 @@ export default function Sign() {
                 지우기
               </button>
             </label>
-            <div className="signature-pad-container">
+            <div className="signature-pad-container" style={{display: 'flex', justifyContent: 'center'}}>
               <SignatureCanvas 
                 ref={sigCanvas} 
                 penColor="black"
-                canvasProps={{width: 500, height: 200, className: 'sigCanvas', style: { width: '100%', height: '200px' }}} 
+                canvasProps={{width: padWidth, height: 200, className: 'sigCanvas'}} 
               />
             </div>
           </div>
